@@ -1,0 +1,28 @@
+## wrangler.toml
+## "Phazex 3D" — Cloudflare Pages + D1 konfiguratsiyasi
+## Eslatma: quyidagi `name` va D1 `database_name`/`database_id` qiymatlari
+## Cloudflare'da allaqachon shu nomlar bilan yaratilgan haqiqiy resurslarga
+## bog'langan — ularni shu yerda o'zgartirish joylashtirishni (deploy) buzishi
+## mumkin. Agar brendni to'liq Phazex 3D qilmoqchi bo'lsangiz, buni
+## Cloudflare dashboard orqali loyihani qayta nomlash (yoki custom domen
+## ulash) yo'li bilan qiling, keyin shu faylni mos ravishda yangilang.
+## Hujjat: https://developers.cloudflare.com/pages/functions/wrangler-configuration/
+
+name = "fazoviy-lab-3d"
+compatibility_date = "2026-11-17"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare Pages uchun build natijasi joylashgan papka (Vite -> dist)
+pages_build_output_dir = "dist"
+
+# D1 ma'lumotlar bazasi bog'lanishi.
+# `database_id` qiymatini `wrangler d1 create fazoviy-lab-db` buyrug'i natijasidagi
+# haqiqiy ID bilan almashtiring (quyidagi yakuniy ko'rsatmalarga qarang).
+[[d1_databases]]
+binding = "DB"
+database_name = "fazoviy-lab-db"
+database_id = "dc4798f6-330e-4680-8479-d26dcc32593d"
+
+# Mahalliy rivojlantirish (wrangler pages dev) uchun muhit o'zgaruvchilari
+[vars]
+ENVIRONMENT = "development"

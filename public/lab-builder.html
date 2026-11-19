@@ -1,0 +1,1448 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Phazex 3D — Virtual Elektronika Konstruktori</title>
+
+<!-- Tailwind CSS (CDN) -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+        colors: {
+          brand: {
+            50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd',
+            400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8',
+          },
+        },
+        boxShadow: {
+          soft: '0 2px 10px rgba(15, 23, 42, 0.06)',
+          card: '0 8px 24px rgba(15, 23, 42, 0.08)',
+          lift: '0 16px 40px rgba(37, 99, 235, 0.18)',
+        },
+      },
+    },
+  };
+</script>
+
+<!-- Google Fonts: Inter -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+<!-- Font Awesome -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+
+<style>
+  html, body { font-family: 'Inter', system-ui, sans-serif; }
+
+  #workspaceViewport { background-color: #f1f5f9; }
+
+  /* Ishchi maydon fon katakchasi (grid pattern) */
+  #workspace {
+    background-image:
+      linear-gradient(to right, rgba(148,163,184,0.18) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(148,163,184,0.18) 1px, transparent 1px);
+    background-size: 28px 28px;
+    background-color: #f8fafc;
+    transform-origin: top left;
+    transition: transform 0.15s ease;
+  }
+  #workspace.drag-over { background-color: #eff6ff; box-shadow: inset 0 0 0 3px #93c5fd; }
+  #workspace.connect-mode { cursor: crosshair; }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+  /* Chap paneldagi jihoz kartasi */
+  .equipment-card {
+    cursor: grab; user-select: none; -webkit-user-drag: element;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  }
+  .equipment-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12); border-color: #93c5fd; }
+  .equipment-card:active { cursor: grabbing; }
+  .equipment-card.dragging-source { opacity: 0.4; }
+  .equipment-thumb { width: 44px; height: 44px; object-fit: contain; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.12)); }
+
+  /* Ishchi maydondagi jihoz */
+  .placed-item { position: absolute; touch-action: none; user-select: none; cursor: grab; z-index: 10; }
+  .placed-item.is-dragging { cursor: grabbing; z-index: 999 !important; }
+  .placed-item .item-card {
+    transition: box-shadow 0.15s ease, transform 0.1s ease, outline-color 0.15s ease;
+    outline: 3px solid transparent; outline-offset: 2px;
+  }
+  .placed-item.is-dragging .item-card { box-shadow: 0 20px 45px rgba(37, 99, 235, 0.3); transform: scale(1.06); }
+  .placed-item.selected .item-card { outline-color: #3b82f6; }
+  .placed-item.connect-pending .item-card { outline-color: #f59e0b; animation: pulseRing 1s ease-in-out infinite; }
+  .placed-item .remove-btn { opacity: 0; transform: scale(0.7); transition: opacity 0.15s ease, transform 0.15s ease; }
+  .placed-item:hover .remove-btn { opacity: 1; transform: scale(1); }
+  .placed-item .item-visual { width: 56px; height: 56px; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15)); pointer-events: none; transition: transform 0.25s ease, filter 0.3s ease; }
+
+  @keyframes pulseRing { 0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.5);} 50% { box-shadow: 0 0 0 7px rgba(245,158,11,0);} }
+  @keyframes popIn { 0% { transform: scale(0.4) translateY(10px); opacity: 0; } 70% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1) translateY(0); opacity: 1; } }
+  .pop-in { animation: popIn 0.28s cubic-bezier(.34,1.56,.64,1) forwards; }
+  @keyframes popOut { to { transform: scale(0.3); opacity: 0; } }
+  .pop-out { animation: popOut 0.18s ease forwards; }
+  .empty-hint { animation: fadeHint 2.6s ease-in-out infinite; }
+  @keyframes fadeHint { 0%,100% { opacity: 0.45; } 50% { opacity: 0.9; } }
+
+  /* Quvvat (power) effektlari */
+  .powered .item-visual { filter: drop-shadow(0 0 14px var(--glow,#facc15)) brightness(1.25) !important; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .powered.type-motor .item-visual { animation: spin 0.6s linear infinite; }
+  @keyframes buzz { 0%,100% { transform: translateX(0);} 25% { transform: translateX(-2px);} 75% { transform: translateX(2px);} }
+  .powered.type-buzzer .item-visual { animation: buzz 0.12s linear infinite; }
+
+  .switch-pill { transition: background-color 0.2s ease, color 0.2s ease; }
+
+  /* O'ng xususiyatlar paneli */
+  #propertiesPanel { transition: transform 0.22s ease, opacity 0.22s ease; }
+  #propertiesPanel.hidden-panel { transform: translateX(16px); opacity: 0; pointer-events: none; }
+
+  .toolbar-btn {
+    display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: 8px;
+    font-size: 12.5px; font-weight: 500; color: #475569; background: #fff; border: 1px solid #e2e8f0;
+    transition: all 0.15s ease; white-space: nowrap;
+  }
+  .toolbar-btn:hover:not(:disabled) { background: #f1f5f9; border-color: #cbd5e1; }
+  .toolbar-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .toolbar-btn.active { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
+
+  #ctxMenu { min-width: 190px; }
+  #ctxMenu button { width: 100%; text-align: left; padding: 8px 12px; font-size: 12.5px; color: #334155; display: flex; align-items: center; gap: 8px; }
+  #ctxMenu button:hover { background: #f1f5f9; }
+
+  .toast { animation: toastIn 0.25s ease forwards, toastOut 0.3s ease 2.2s forwards; }
+  @keyframes toastIn { from { transform: translateY(10px); opacity: 0;} to { transform: translateY(0); opacity: 1;} }
+  @keyframes toastOut { to { transform: translateY(10px); opacity: 0; } }
+
+  .modal-backdrop { background: rgba(15,23,42,0.45); backdrop-filter: blur(2px); }
+
+  /* ===== Realistik sim (wire) animatsiyasi ===== */
+  .wire-flow { stroke-dasharray: 10 8; animation: wireDash 0.7s linear infinite; }
+  @keyframes wireDash { to { stroke-dashoffset: -36; } }
+  .wire-preview { stroke-dasharray: 6 6; animation: wireDash 0.5s linear infinite; pointer-events: none; }
+
+  /* ===== Qisqa tutashuv / portlash effekti ===== */
+  @keyframes sparkPulse {
+    0% { r: 4; opacity: 1; }
+    100% { r: 26; opacity: 0; }
+  }
+  .spark-ring { animation: sparkPulse 0.6s ease-out infinite; }
+  @keyframes shortShake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-3px) rotate(-1deg); } 40% { transform: translateX(3px) rotate(1deg); } 60% { transform: translateX(-2px); } 80% { transform: translateX(2px); } }
+  .short-circuit .item-card { animation: shortShake 0.3s ease-in-out infinite; outline-color: #ef4444 !important; }
+  .fuse-blown .item-visual { filter: grayscale(1) brightness(0.6) !important; }
+
+  /* ===== Statistika paneli ===== */
+  #statsPanel {
+    position: absolute; left: 16px; bottom: 16px; z-index: 20;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+  #statsPanel.hidden-panel { transform: translateY(10px); opacity: 0; pointer-events: none; }
+  .stat-chip { display: flex; flex-direction: column; align-items: center; padding: 6px 12px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; min-width: 64px; }
+  .stat-chip b { font-size: 13px; font-family: ui-monospace, monospace; }
+  .stat-chip span { font-size: 9.5px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.03em; }
+
+  /* ===== Aylantirish uchun drag-handle ===== */
+  .rotate-handle {
+    position: absolute; top: -26px; left: 50%; transform: translateX(-50%);
+    width: 20px; height: 20px; border-radius: 999px; background: #3b82f6; color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 10px;
+    cursor: grab; box-shadow: 0 2px 6px rgba(37,99,235,0.4); opacity: 0; transition: opacity 0.15s ease;
+  }
+  .placed-item.selected .rotate-handle { opacity: 1; }
+  .rotate-handle:active { cursor: grabbing; }
+
+  /* ===== Yutuqlar (achievements) ===== */
+  @keyframes achievementPop { 0% { transform: scale(0.3) translateY(20px); opacity: 0; } 60% { transform: scale(1.1); } 100% { transform: scale(1) translateY(0); opacity: 1; } }
+  .achievement-toast { animation: achievementPop 0.4s cubic-bezier(.34,1.56,.64,1) forwards, toastOut 0.3s ease 3.6s forwards; }
+
+  /* ===== Fan kategoriya tablari ===== */
+  .category-tab { padding: 5px 10px; border-radius: 999px; font-size: 10.5px; font-weight: 600; color: #64748b; background: #f1f5f9; white-space: nowrap; transition: all 0.15s ease; }
+  .category-tab.active { background: #3b82f6; color: #fff; }
+  .category-tab:hover:not(.active) { background: #e2e8f0; }
+
+  /* ===== Rubber-band ko'p tanlash ===== */
+  #selectionBox { position: absolute; border: 1.5px dashed #3b82f6; background: rgba(59,130,246,0.08); z-index: 15; pointer-events: none; display: none; }
+  .placed-item.multi-selected .item-card { outline-color: #8b5cf6; outline-style: dashed; }
+
+  /* ===== Batareya quvvat darajasi ===== */
+  .battery-bar { height: 3px; border-radius: 2px; background: #e2e8f0; overflow: hidden; margin-top: 2px; }
+  .battery-bar-fill { height: 100%; transition: width 0.4s ease, background-color 0.4s ease; }
+</style>
+</head>
+
+<body class="h-screen overflow-hidden flex flex-col bg-slate-50 text-slate-800">
+
+  <!-- ===== HEADER / TOOLBAR ===== -->
+  <header class="shrink-0 bg-white border-b border-slate-200 shadow-soft z-30">
+    <div class="h-16 flex items-center justify-between px-5">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-500 to-sky-400 flex items-center justify-center shadow-lift">
+          <i class="fa-solid fa-flask-vial text-white text-lg"></i>
+        </div>
+        <div>
+          <h1 class="text-base font-bold text-slate-800 leading-tight">Phazex 3D — Elektronika Konstruktori</h1>
+          <p class="text-[11px] text-slate-500 leading-tight">Sudrab joylashtiring, ulang va zanjirni ishga tushiring</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <div class="hidden md:flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-1.5 text-xs text-slate-600 mr-1">
+          <i class="fa-solid fa-layer-group text-brand-500"></i>
+          <span>Sahnada: <b id="itemCount" class="text-slate-800">0</b> ta</span>
+        </div>
+        <button id="helpBtn" class="toolbar-btn" title="Yordam / Qisqa yo'llar">
+          <i class="fa-solid fa-circle-question"></i>
+        </button>
+        <button id="clearBtn" class="toolbar-btn !text-rose-500 hover:!bg-rose-50 hover:!border-rose-200" title="Barchasini tozalash">
+          <i class="fa-solid fa-trash-can"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Ikkinchi qator: funksional asboblar paneli -->
+    <div class="h-12 flex items-center gap-2 px-5 border-t border-slate-100 overflow-x-auto">
+      <button id="undoBtn" class="toolbar-btn" title="Bekor qilish (Ctrl+Z)"><i class="fa-solid fa-rotate-left"></i><span class="hidden lg:inline">Bekor qilish</span></button>
+      <button id="redoBtn" class="toolbar-btn" title="Qaytarish (Ctrl+Y)"><i class="fa-solid fa-rotate-right"></i><span class="hidden lg:inline">Qaytarish</span></button>
+
+      <span class="w-px h-6 bg-slate-200 mx-1"></span>
+
+      <button id="connectBtn" class="toolbar-btn" title="Ulash rejimi: ikkita jihozni bosib sim bilan ulang">
+        <i class="fa-solid fa-plug-circle-bolt"></i><span class="hidden lg:inline">Ulash rejimi</span>
+      </button>
+      <button id="powerBtn" class="toolbar-btn" title="Zanjirga quvvat berish">
+        <i class="fa-solid fa-power-off"></i><span class="hidden lg:inline">Quvvat</span>
+      </button>
+
+      <span class="w-px h-6 bg-slate-200 mx-1"></span>
+
+      <button id="zoomOutBtn" class="toolbar-btn" title="Kichraytirish"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+      <span id="zoomLabel" class="text-xs font-mono text-slate-500 w-11 text-center">100%</span>
+      <button id="zoomInBtn" class="toolbar-btn" title="Kattalashtirish"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+      <button id="zoomResetBtn" class="toolbar-btn" title="Standart o'lcham"><i class="fa-solid fa-compress"></i></button>
+
+      <label class="toolbar-btn cursor-pointer select-none">
+        <input type="checkbox" id="snapToggle" class="accent-brand-500" />
+        <span>Katakka moslash</span>
+      </label>
+
+      <span class="w-px h-6 bg-slate-200 mx-1"></span>
+
+      <button id="saveBtn" class="toolbar-btn" title="Loyihani saqlash (localStorage)"><i class="fa-solid fa-floppy-disk"></i><span class="hidden lg:inline">Saqlash</span></button>
+      <button id="loadBtn" class="toolbar-btn" title="Saqlangan loyihani yuklash"><i class="fa-solid fa-folder-open"></i><span class="hidden lg:inline">Yuklash</span></button>
+      <button id="exportBtn" class="toolbar-btn" title="JSON fayl sifatida eksport qilish"><i class="fa-solid fa-file-export"></i><span class="hidden lg:inline">Eksport</span></button>
+      <button id="importBtn" class="toolbar-btn" title="JSON fayldan import qilish"><i class="fa-solid fa-file-import"></i><span class="hidden lg:inline">Import</span></button>
+      <input type="file" id="importInput" accept="application/json" class="hidden" />
+    </div>
+  </header>
+
+  <!-- ===== MAIN LAYOUT ===== -->
+  <div class="flex-1 flex overflow-hidden">
+
+    <!-- ===== SIDEBAR: JIHOZLAR TO'PLAMI ===== -->
+    <aside class="w-64 shrink-0 bg-white border-r border-slate-200 flex flex-col overflow-hidden">
+      <div class="px-3.5 pt-4 pb-3 border-b border-slate-100">
+        <h2 class="text-sm font-semibold text-slate-700 flex items-center gap-2 mb-2">
+          <i class="fa-solid fa-toolbox text-brand-500"></i> Jihozlar to'plami
+        </h2>
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+          <input id="equipmentSearch" type="text" placeholder="Qidirish..."
+            class="w-full pl-8 pr-2 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-200 focus:border-brand-400" />
+        </div>
+      </div>
+
+      <div id="equipmentList" class="flex-1 overflow-y-auto px-3 py-3 space-y-2.5"></div>
+
+      <div class="px-3.5 py-2.5 border-t border-slate-100 bg-slate-50">
+        <p class="text-[10px] text-slate-400 leading-snug">
+          <i class="fa-solid fa-circle-info text-brand-400 mr-1"></i>
+          Ikki marta bosish yoki <i class="fa-solid fa-xmark text-rose-400"></i> = o'chirish. O'ng tugma = qo'shimcha menyu.
+        </p>
+      </div>
+    </aside>
+
+    <!-- ===== ISHCHI MAYDON (WORKSPACE) ===== -->
+    <main id="workspaceViewport" class="flex-1 relative overflow-auto">
+      <div id="workspace" class="relative" style="width:2200px; height:1400px;">
+        <div id="emptyHint" class="empty-hint absolute inset-0 flex flex-col items-center justify-center text-slate-300 pointer-events-none select-none">
+          <i class="fa-solid fa-hand-pointer text-5xl mb-3"></i>
+          <p class="text-sm font-medium text-slate-400">Jihozlarni shu yerga tashlang</p>
+          <p class="text-xs text-slate-300 mt-1">Chapdagi ro'yxatdan sudrab olib keling (drag &amp; drop)</p>
+        </div>
+        <svg id="wiresLayer" class="absolute inset-0" style="z-index:5; pointer-events:none;"></svg>
+        <div id="selectionBox"></div>
+        <!-- Tushirilgan jihozlar shu yerga qo'shiladi (JS) -->
+      </div>
+
+      <!-- Zanjir statistikasi (quvvat yoqilganda ko'rinadi) -->
+      <div id="statsPanel" class="hidden-panel bg-white rounded-2xl shadow-card border border-slate-200 px-3 py-2.5 flex items-center gap-2">
+        <div class="stat-chip"><b id="statVoltage" class="text-brand-600">0.0</b><span>Volt</span></div>
+        <div class="stat-chip"><b id="statResistance" class="text-amber-600">0</b><span>Om</span></div>
+        <div class="stat-chip"><b id="statCurrent" class="text-emerald-600">0.00</b><span>Amper</span></div>
+        <div class="stat-chip"><b id="statPower" class="text-violet-600">0.0</b><span>Vatt</span></div>
+      </div>
+
+      <!-- Ko'p tanlash uchun suzuvchi harakatlar paneli -->
+      <div id="multiSelectBar" class="hidden absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-white rounded-xl shadow-card border border-slate-200 px-3 py-2 items-center gap-2">
+        <span class="text-xs font-medium text-slate-600"><b id="multiSelectCount">0</b> ta tanlandi</span>
+        <button id="multiRotateBtn" class="toolbar-btn !px-2.5" title="Hammasini aylantirish"><i class="fa-solid fa-rotate-right"></i></button>
+        <button id="multiDuplicateBtn" class="toolbar-btn !px-2.5" title="Nusxalash"><i class="fa-solid fa-copy"></i></button>
+        <button id="multiDeleteBtn" class="toolbar-btn !px-2.5 !text-rose-500" title="O'chirish"><i class="fa-solid fa-trash-can"></i></button>
+      </div>
+    </main>
+
+    <!-- ===== O'NG PANEL: XUSUSIYATLAR ===== -->
+    <aside id="propertiesPanel" class="hidden-panel w-72 shrink-0 bg-white border-l border-slate-200 flex flex-col overflow-y-auto">
+      <div class="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-slate-700 flex items-center gap-2">
+          <i class="fa-solid fa-sliders text-brand-500"></i> Xususiyatlar
+        </h2>
+        <button id="closePropertiesBtn" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div id="propertiesContent" class="p-4 space-y-4"></div>
+    </aside>
+  </div>
+
+  <!-- ===== FOOTER / STATUS BAR ===== -->
+  <footer class="h-9 shrink-0 bg-white border-t border-slate-200 flex items-center justify-between px-5 text-[11px] text-slate-400">
+    <span id="statusText"><i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i> Tayyor</span>
+    <span>Phazex 3D &middot; 2D Elektronika Konstruktori &middot; Light Theme</span>
+  </footer>
+
+  <!-- ===== TOAST konteyner ===== -->
+  <div id="toastContainer" class="fixed bottom-14 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 pointer-events-none"></div>
+
+  <!-- ===== Kontekst menyu (o'ng tugma) ===== -->
+  <div id="ctxMenu" class="fixed hidden bg-white rounded-xl shadow-card border border-slate-200 py-1.5 z-50"></div>
+
+  <!-- ===== Yordam modali ===== -->
+  <div id="helpModal" class="fixed inset-0 modal-backdrop hidden items-center justify-center z-50">
+    <div class="bg-white rounded-2xl shadow-card w-full max-w-md mx-4 p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-base font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-circle-question text-brand-500"></i> Qisqa yo'llar</h3>
+        <button id="closeHelpBtn" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <ul class="space-y-2 text-[13px] text-slate-600">
+        <li class="flex justify-between"><span>Jihozni o'chirish</span><code class="bg-slate-100 px-2 py-0.5 rounded text-xs">2x bosish / Delete</code></li>
+        <li class="flex justify-between"><span>Nusxalash</span><code class="bg-slate-100 px-2 py-0.5 rounded text-xs">Ctrl+D</code></li>
+        <li class="flex justify-between"><span>Bekor qilish</span><code class="bg-slate-100 px-2 py-0.5 rounded text-xs">Ctrl+Z</code></li>
+        <li class="flex justify-between"><span>Qaytarish</span><code class="bg-slate-100 px-2 py-0.5 rounded text-xs">Ctrl+Y</code></li>
+        <li class="flex justify-between"><span>Tanlashni bekor qilish</span><code class="bg-slate-100 px-2 py-0.5 rounded text-xs">Esc</code></li>
+        <li class="flex justify-between"><span>Qo'shimcha menyu</span><code class="bg-slate-100 px-2 py-0.5 rounded text-xs">O'ng tugma</code></li>
+        <li class="pt-2 border-t border-slate-100 text-slate-500">
+          <b>Ulash rejimi:</b> yoqib, ketma-ket ikkita jihozni bosing — ular orasida sim chiziladi.
+        </li>
+        <li class="text-slate-500"><b>Quvvat:</b> yoqilganda batareyadan ulangan, yoniq kalit orqali o'tgan LED/buzzer/motor faollashadi.</li>
+      </ul>
+    </div>
+  </div>
+
+<script>
+  // =========================================================
+  // 1) JIHOZLAR MA'LUMOTLAR BAZASI
+  // =========================================================
+  const CATEGORIES = {
+    power: { label: "Quvvat manbai", icon: 'fa-car-battery' },
+    output: { label: 'Chiqish qurilmalari', icon: 'fa-lightbulb' },
+    input: { label: 'Kirish / Sensorlar', icon: 'fa-satellite-dish' },
+    control: { label: 'Boshqaruv', icon: 'fa-toggle-on' },
+    passive: { label: 'Passiv elementlar', icon: 'fa-microchip' },
+  };
+
+  const EQUIPMENT = [
+    { id: 'battery', name: 'Batareyka', spec: '9V DC', type: 'battery', category: 'power', color: '#22c55e',
+      image: 'https://cdn-icons-png.flaticon.com/512/4320/4320350.png',
+      svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <rect x="14" y="10" width="36" height="12" rx="2" fill="#1e293b"/>
+        <rect x="26" y="4" width="12" height="8" rx="2" fill="#475569"/>
+        <rect x="10" y="20" width="44" height="38" rx="5" fill="url(#battGrad)"/>
+        <rect x="10" y="20" width="44" height="12" rx="5" fill="#16a34a"/>
+        <text x="32" y="30" font-size="9" fill="#fff" text-anchor="middle" font-weight="700">+ —</text>
+        <rect x="16" y="38" width="32" height="4" rx="2" fill="#0f172a" opacity="0.25"/>
+        <rect x="16" y="46" width="32" height="4" rx="2" fill="#0f172a" opacity="0.25"/>
+        <defs><linearGradient id="battGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4ade80"/><stop offset="1" stop-color="#15803d"/></linearGradient></defs>
+      </svg>` },
+    { id: 'led', name: 'LED chiroq', spec: '20 mA', type: 'led', category: 'output', color: '#ef4444',
+      image: 'https://cdn-icons-png.flaticon.com/512/702/702698.png',
+      svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <path d="M32 6c-10 0-16 7-16 16 0 9 7 13 7 20h18c0-7 7-11 7-20 0-9-6-16-16-16z" fill="url(#ledGrad)"/>
+        <circle cx="32" cy="22" r="7" fill="#fff" opacity="0.5"/>
+        <rect x="23" y="42" width="18" height="6" fill="#cbd5e1"/>
+        <rect x="26" y="48" width="4" height="12" fill="#94a3b8"/>
+        <rect x="34" y="48" width="4" height="14" fill="#94a3b8"/>
+        <defs><radialGradient id="ledGrad" cx="0.4" cy="0.3" r="0.8"><stop offset="0" stop-color="#fecaca"/><stop offset="0.5" stop-color="#f87171"/><stop offset="1" stop-color="#b91c1c"/></radialGradient></defs>
+      </svg>` },
+    { id: 'resistor', name: 'Rezistor', spec: '220 Ω', type: 'resistor', category: 'passive', color: '#d6a35c',
+      image: 'https://cdn-icons-png.flaticon.com/512/9790/9790371.png',
+      svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <line x1="2" y1="32" x2="18" y2="32" stroke="#94a3b8" stroke-width="3"/>
+        <line x1="46" y1="32" x2="62" y2="32" stroke="#94a3b8" stroke-width="3"/>
+        <rect x="16" y="20" width="32" height="24" rx="6" fill="#e9d5ac" stroke="#c99a52" stroke-width="2"/>
+        <rect x="23" y="20" width="4" height="24" fill="#8b5cf6"/>
+        <rect x="30" y="20" width="4" height="24" fill="#ef4444"/>
+        <rect x="37" y="20" width="4" height="24" fill="#f59e0b"/>
+      </svg>` },
+    { id: 'switch', name: 'Kalit (Switch)', spec: 'ON / OFF', type: 'switch', category: 'control', color: '#64748b',
+      image: 'https://cdn-icons-png.flaticon.com/512/3524/3524659.png',
+      svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <rect x="8" y="22" width="48" height="22" rx="11" fill="#e2e8f0" stroke="#94a3b8" stroke-width="2"/>
+        <circle cx="42" cy="33" r="13" fill="url(#swGrad)"/>
+        <rect x="14" y="30" width="16" height="6" rx="3" fill="#64748b"/>
+        <defs><radialGradient id="swGrad" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#86efac"/><stop offset="1" stop-color="#16a34a"/></radialGradient></defs>
+      </svg>` },
+    { id: 'sensor', name: 'Sensor', spec: "Harorat/Yorug'lik", type: 'sensor', category: 'input', color: '#6366f1',
+      image: 'https://cdn-icons-png.flaticon.com/512/2920/2920244.png',
+      svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="14" width="44" height="36" rx="8" fill="#1e293b"/>
+        <circle cx="32" cy="32" r="12" fill="url(#sensGrad)"/>
+        <circle cx="32" cy="32" r="5" fill="#0f172a"/>
+        <rect x="16" y="50" width="4" height="8" fill="#64748b"/>
+        <rect x="44" y="50" width="4" height="8" fill="#64748b"/>
+        <defs><radialGradient id="sensGrad" cx="0.4" cy="0.35" r="0.8"><stop offset="0" stop-color="#a5b4fc"/><stop offset="1" stop-color="#4338ca"/></radialGradient></defs>
+      </svg>` },
+    { id: 'buzzer', name: 'Buzzer', spec: 'Ovoz signali', type: 'buzzer', category: 'output', color: '#0ea5e9',
+      image: 'https://cdn-icons-png.flaticon.com/512/4221/4221423.png',
+      svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="32" cy="30" r="22" fill="url(#buzGrad)"/>
+        <circle cx="32" cy="30" r="10" fill="#0f172a"/>
+        <circle cx="32" cy="30" r="4" fill="#facc15"/>
+        <rect x="20" y="50" width="4" height="10" fill="#94a3b8"/>
+        <rect x="40" y="50" width="4" height="10" fill="#94a3b8"/>
+        <defs><radialGradient id="buzGrad" cx="0.35" cy="0.3" r="0.9"><stop offset="0" stop-color="#475569"/><stop offset="1" stop-color="#1e293b"/></radialGradient></defs>
+      </svg>` },
+    { id: 'motor', name: 'DC Motor', spec: '3-6V', type: 'motor', category: 'output', color: '#f97316',
+      image: 'https://cdn-icons-png.flaticon.com/512/1086/1086745.png',
+      svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <rect x="8" y="16" width="38" height="32" rx="6" fill="url(#motGrad)"/>
+        <circle cx="12" cy="32" r="3" fill="#fbbf24"/>
+        <circle cx="42" cy="32" r="3" fill="#fbbf24"/>
+        <rect x="46" y="27" width="14" height="10" rx="2" fill="#94a3b8"/>
+        <rect x="58" y="30" width="4" height="4" fill="#475569"/>
+        <defs><linearGradient id="motGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#60a5fa"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient></defs>
+      </svg>` },
+    { id: 'capacitor', name: 'Kondensator', spec: '100 µF', type: 'capacitor', category: 'passive', color: '#8b5cf6',
+      image: 'https://cdn-icons-png.flaticon.com/512/9790/9790340.png',
+      svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <rect x="18" y="10" width="28" height="42" rx="12" fill="url(#capGrad)"/>
+        <rect x="18" y="10" width="28" height="42" rx="12" fill="none" stroke="#fff" stroke-opacity="0.25" stroke-width="2"/>
+        <rect x="30" y="10" width="4" height="42" fill="#fde68a" opacity="0.8"/>
+        <rect x="24" y="52" width="4" height="10" fill="#94a3b8"/>
+        <rect x="36" y="52" width="4" height="10" fill="#94a3b8"/>
+        <defs><linearGradient id="capGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#60a5fa"/><stop offset="1" stop-color="#1e3a8a"/></linearGradient></defs>
+      </svg>` },
+    { id: 'button', name: 'Tugma (Button)', spec: 'Bosilganda ON', type: 'button', category: 'control', color: '#ec4899',
+      image: 'https://cdn-icons-png.flaticon.com/512/3524/3524636.png',
+      svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <rect x="8" y="34" width="48" height="16" rx="4" fill="#1e293b"/>
+        <circle cx="32" cy="28" r="18" fill="url(#btnGrad)" stroke="#9f1239" stroke-width="2"/>
+        <circle cx="32" cy="28" r="10" fill="#fda4af" opacity="0.5"/>
+        <defs><radialGradient id="btnGrad" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#fb7185"/><stop offset="1" stop-color="#be123c"/></radialGradient></defs>
+      </svg>` },
+    { id: 'potentiometer', name: 'Potensiometr', spec: '0-100%', type: 'potentiometer', category: 'passive', color: '#0d9488',
+      image: 'https://cdn-icons-png.flaticon.com/512/4315/4315450.png',
+      svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="10" width="44" height="34" rx="6" fill="#1e293b"/>
+        <circle cx="32" cy="27" r="13" fill="url(#potGrad)"/>
+        <rect x="31" y="14" width="2" height="12" fill="#facc15" transform="rotate(35 32 27)"/>
+        <rect x="18" y="48" width="4" height="10" fill="#94a3b8"/>
+        <rect x="42" y="48" width="4" height="10" fill="#94a3b8"/>
+        <defs><radialGradient id="potGrad" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#0f766e"/></radialGradient></defs>
+      </svg>` },
+    { id: 'photoresistor', name: 'Fotorezistor (LDR)', spec: "Yorug'likka sezgir", type: 'photoresistor', category: 'input', color: '#eab308',
+      image: 'https://cdn-icons-png.flaticon.com/512/4074/4074671.png',
+      svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <line x1="2" y1="32" x2="16" y2="32" stroke="#94a3b8" stroke-width="3"/>
+        <line x1="48" y1="32" x2="62" y2="32" stroke="#94a3b8" stroke-width="3"/>
+        <circle cx="32" cy="32" r="20" fill="url(#ldrGrad)" stroke="#a16207" stroke-width="2"/>
+        <path d="M18 24 Q32 36 46 24" stroke="#422006" stroke-width="2.5" fill="none"/>
+        <path d="M18 40 Q32 28 46 40" stroke="#422006" stroke-width="2.5" fill="none"/>
+        <defs><radialGradient id="ldrGrad" cx="0.4" cy="0.35" r="0.8"><stop offset="0" stop-color="#fde047"/><stop offset="1" stop-color="#ca8a04"/></radialGradient></defs>
+      </svg>` },
+    { id: 'relay', name: 'Rele', spec: 'Elektromagnit kalit', type: 'relay', category: 'control', color: '#0284c7',
+      image: 'https://cdn-icons-png.flaticon.com/512/9067/9067349.png',
+      svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="12" width="44" height="40" rx="5" fill="#0369a1"/>
+        <rect x="16" y="18" width="32" height="20" rx="3" fill="#e0f2fe"/>
+        <circle cx="24" cy="28" r="3" fill="#0369a1"/>
+        <circle cx="40" cy="28" r="3" fill="#0369a1"/>
+        <rect x="20" y="42" width="24" height="5" rx="2" fill="#bae6fd"/>
+      </svg>` },
+    { id: 'sevenseg', name: '7-segment displey', spec: 'Raqam ko\\u2018rsatkich', type: 'sevenseg', category: 'output', color: '#dc2626',
+      image: 'https://cdn-icons-png.flaticon.com/512/8637/8637958.png',
+      svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="6" width="44" height="52" rx="4" fill="#1e293b"/>
+        <g stroke="#f87171" stroke-width="4" stroke-linecap="round" opacity="0.9">
+          <line x1="20" y1="14" x2="36" y2="14"/><line x1="38" y1="16" x2="38" y2="28"/>
+          <line x1="38" y1="32" x2="38" y2="44"/><line x1="20" y1="46" x2="36" y2="46"/>
+          <line x1="18" y1="32" x2="18" y2="44"/><line x1="18" y1="16" x2="18" y2="28"/>
+          <line x1="20" y1="30" x2="36" y2="30"/>
+        </g>
+      </svg>` },
+    { id: 'fuse', name: "Saqlagich (Fuse)", spec: '1A', type: 'fuse', category: 'passive', color: '#78716c',
+      image: 'https://cdn-icons-png.flaticon.com/512/9067/9067361.png',
+      svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <line x1="2" y1="32" x2="14" y2="32" stroke="#94a3b8" stroke-width="3"/>
+        <line x1="50" y1="32" x2="62" y2="32" stroke="#94a3b8" stroke-width="3"/>
+        <rect x="14" y="18" width="36" height="28" rx="14" fill="#e2e8f0" stroke="#94a3b8" stroke-width="2"/>
+        <path d="M20 32 L28 24 L32 32 L36 24 L44 32" stroke="#64748b" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      </svg>` },
+  ];
+  const EQUIPMENT_BY_ID = Object.fromEntries(EQUIPMENT.map((e) => [e.id, e]));
+  // Har bir jihoz uchun allaqachon qo'lda chizilgan SVG ikonka mavjud — shuni
+  // asosiy manba qilib ishlatamiz (tashqi flaticon.com CDN'siga bog'liq
+  // bo'lmaslik uchun: hotlink bloklansa yoki tarmoq yo'q bo'lsa ham ishlaydi).
+  EQUIPMENT.forEach((eq) => { eq.image = svgToDataUrl(eq.svg); });
+
+  const LED_COLORS = {
+    red:    { label: 'Qizil',  hue: 0,   hex: '#ef4444' },
+    yellow: { label: 'Sariq',  hue: 50,  hex: '#eab308' },
+    green:  { label: 'Yashil', hue: 100, hex: '#22c55e' },
+    blue:   { label: "Ko'k",   hue: 190, hex: '#3b82f6' },
+  };
+
+  const GRID_SIZE = 28;
+
+  // =========================================================
+  // 2) HOLAT (STATE)
+  // =========================================================
+  let state = { items: [], connections: [] };
+  let nextId = 1;
+  let selectedId = null;
+  let selectedIds = new Set();
+  let zoom = 1;
+  let connectMode = false;
+  let pendingConnectId = null;
+  let powerOn = false;
+  let snapEnabled = false;
+  let activeCategory = 'all';
+  let mousePos = { x: 0, y: 0 };
+
+  let historyStack = [];
+  let historyIndex = -1;
+  let suppressHistory = false;
+
+  // DOM referanslari
+  const workspaceViewport = document.getElementById('workspaceViewport');
+  const workspace = document.getElementById('workspace');
+  const wiresLayer = document.getElementById('wiresLayer');
+  const emptyHint = document.getElementById('emptyHint');
+  const itemCountEl = document.getElementById('itemCount');
+  const equipmentListEl = document.getElementById('equipmentList');
+  const propertiesPanel = document.getElementById('propertiesPanel');
+  const propertiesContent = document.getElementById('propertiesContent');
+  const statusText = document.getElementById('statusText');
+
+  function svgToDataUrl(svgString) { return 'data:image/svg+xml;utf8,' + encodeURIComponent(svgString); }
+  function uid() { return 'it_' + (nextId++) + '_' + Math.random().toString(36).slice(2, 7); }
+
+  function defaultValueFor(type) {
+    if (type === 'battery') return 9;
+    if (type === 'resistor') return 220;
+    if (type === 'led') return 'red';
+    if (type === 'potentiometer') return 50;
+    if (type === 'photoresistor') return 50;
+    if (type === 'fuse') return 1;
+    return null;
+  }
+
+  function isControlType(type) { return type === 'switch' || type === 'button' || type === 'relay'; }
+
+  // =========================================================
+  // 3) TOAST / STATUS
+  // =========================================================
+  function toast(message, icon = 'fa-circle-check', colorClass = 'text-emerald-500') {
+    const el = document.createElement('div');
+    el.className = 'toast bg-white border border-slate-200 shadow-card rounded-xl px-4 py-2 text-xs font-medium text-slate-700 flex items-center gap-2';
+    el.innerHTML = `<i class="fa-solid ${icon} ${colorClass}"></i> ${message}`;
+    document.getElementById('toastContainer').appendChild(el);
+    setTimeout(() => el.remove(), 2600);
+  }
+
+  // =========================================================
+  // 3.1) OVOZ EFFEKTLARI (Web Audio API — tashqi fayl shart emas)
+  // =========================================================
+  let audioCtx = null;
+  function getAudioCtx() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  function beep(freq, duration, type = 'sine', gainValue = 0.08, delay = 0) {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.value = gainValue;
+    osc.connect(gain); gain.connect(ctx.destination);
+    const startTime = ctx.currentTime + delay;
+    gain.gain.setValueAtTime(gainValue, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+    osc.start(startTime);
+    osc.stop(startTime + duration + 0.02);
+  }
+
+  const SOUND_PRESETS = {
+    click: () => beep(600, 0.06, 'triangle', 0.06),
+    connect: () => { beep(500, 0.08, 'sine', 0.07); beep(800, 0.1, 'sine', 0.06, 0.07); },
+    disconnect: () => beep(300, 0.12, 'sawtooth', 0.05),
+    delete: () => beep(220, 0.15, 'sawtooth', 0.06),
+    duplicate: () => beep(700, 0.05, 'triangle', 0.05),
+    powerOn: () => { beep(220, 0.08, 'sine', 0.07); beep(440, 0.08, 'sine', 0.07, 0.08); beep(660, 0.14, 'sine', 0.07, 0.16); },
+    powerOff: () => { beep(660, 0.08, 'sine', 0.06); beep(330, 0.14, 'sine', 0.06, 0.08); },
+    switchOn: () => beep(900, 0.05, 'square', 0.05),
+    switchOff: () => beep(400, 0.05, 'square', 0.05),
+    error: () => { beep(180, 0.18, 'sawtooth', 0.08); beep(140, 0.22, 'sawtooth', 0.07, 0.1); },
+    achievement: () => { beep(523, 0.1, 'sine', 0.07); beep(659, 0.1, 'sine', 0.07, 0.1); beep(784, 0.2, 'sine', 0.08, 0.2); },
+    undo: () => beep(500, 0.06, 'sine', 0.05),
+  };
+  function playSound(name) { if (SOUND_PRESETS[name]) { try { SOUND_PRESETS[name](); } catch (e) {} } }
+
+  // Buzzer/motor doimiy ovozi (quvvat yoqilib turganda)
+  const activeOscillators = {};
+  function startContinuousSound(itemId, freq, type) {
+    if (activeOscillators[itemId]) return;
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    gain.gain.value = 0.035;
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start();
+    activeOscillators[itemId] = { osc, gain };
+  }
+  function stopContinuousSound(itemId) {
+    const entry = activeOscillators[itemId];
+    if (!entry) return;
+    try { entry.gain.gain.exponentialRampToValueAtTime(0.0001, getAudioCtx().currentTime + 0.1); entry.osc.stop(getAudioCtx().currentTime + 0.12); } catch (e) {}
+    delete activeOscillators[itemId];
+  }
+  function syncContinuousSounds(poweredSet) {
+    state.items.forEach((item) => {
+      const eq = EQUIPMENT_BY_ID[item.equipmentId];
+      const shouldPlay = powerOn && poweredSet.has(item.id) && (eq.type === 'buzzer' || eq.type === 'motor');
+      if (shouldPlay && eq.type === 'buzzer') startContinuousSound(item.id, 880, 'square');
+      else if (shouldPlay && eq.type === 'motor') startContinuousSound(item.id, 120, 'sawtooth');
+      else stopContinuousSound(item.id);
+    });
+    Object.keys(activeOscillators).forEach((id) => { if (!state.items.find((i) => i.id === id)) stopContinuousSound(id); });
+  }
+
+  // =========================================================
+  // 3.2) YUTUQLAR (ACHIEVEMENTS)
+  // =========================================================
+  const ACHIEVEMENTS_KEY = 'phazex-3d-achievements';
+  const ACHIEVEMENT_DEFS = {
+    firstItem: "Birinchi jihoz qo'shildi",
+    firstConnection: 'Birinchi sim ulandi',
+    firstPower: 'Birinchi marta quvvat berildi',
+    firstLed: "LED'ni birinchi marta yoqdingiz",
+    shortCircuit: "Qisqa tutashuvni o'rgandingiz",
+    builder10: "10 ta jihozdan iborat sxema qurdingiz",
+  };
+  function getUnlockedAchievements() {
+    try { return JSON.parse(localStorage.getItem(ACHIEVEMENTS_KEY) || '{}'); } catch (e) { return {}; }
+  }
+  function maybeUnlockAchievement(key, message) {
+    const unlocked = getUnlockedAchievements();
+    if (unlocked[key]) return;
+    unlocked[key] = true;
+    localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(unlocked));
+    showAchievementToast(message || ACHIEVEMENT_DEFS[key] || 'Yangi yutuq!');
+  }
+  function showAchievementToast(message) {
+    playSound('achievement');
+    const el = document.createElement('div');
+    el.className = 'achievement-toast bg-gradient-to-r from-amber-400 to-amber-500 text-white shadow-lift rounded-2xl px-5 py-3 flex items-center gap-3 pointer-events-none';
+    el.innerHTML = `
+      <div class="w-9 h-9 rounded-full bg-white/25 flex items-center justify-center text-lg"><i class="fa-solid fa-trophy"></i></div>
+      <div>
+        <p class="text-[10px] font-bold uppercase tracking-wide opacity-80">Yangi yutuq!</p>
+        <p class="text-sm font-semibold leading-tight">${message}</p>
+      </div>`;
+    document.getElementById('toastContainer').appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  }
+
+  // =========================================================
+  // 4) TARIX (UNDO / REDO)
+  // =========================================================
+  function snapshot() { return JSON.parse(JSON.stringify({ items: state.items, connections: state.connections })); }
+
+  function pushHistory() {
+    if (suppressHistory) return;
+    historyStack = historyStack.slice(0, historyIndex + 1);
+    historyStack.push(snapshot());
+    if (historyStack.length > 60) historyStack.shift();
+    historyIndex = historyStack.length - 1;
+    updateUndoRedoButtons();
+    autoSaveLocal();
+  }
+
+  function restoreSnapshot(snap) {
+    suppressHistory = true;
+    state = JSON.parse(JSON.stringify(snap));
+    selectedId = null;
+    renderAll();
+    suppressHistory = false;
+  }
+
+  function undo() {
+    if (historyIndex <= 0) { toast("Bekor qilish uchun amal yo'q", 'fa-circle-info', 'text-slate-400'); return; }
+    historyIndex--;
+    restoreSnapshot(historyStack[historyIndex]);
+    updateUndoRedoButtons();
+    playSound('undo');
+    toast('Bekor qilindi', 'fa-rotate-left', 'text-brand-500');
+  }
+
+  function redo() {
+    if (historyIndex >= historyStack.length - 1) { toast("Qaytarish uchun amal yo'q", 'fa-circle-info', 'text-slate-400'); return; }
+    historyIndex++;
+    restoreSnapshot(historyStack[historyIndex]);
+    updateUndoRedoButtons();
+    toast('Qaytarildi', 'fa-rotate-right', 'text-brand-500');
+  }
+
+  function updateUndoRedoButtons() {
+    document.getElementById('undoBtn').disabled = historyIndex <= 0;
+    document.getElementById('redoBtn').disabled = historyIndex >= historyStack.length - 1;
+  }
+
+  // =========================================================
+  // 5) SAQLASH / YUKLASH / EKSPORT / IMPORT
+  // =========================================================
+  const STORAGE_KEY = 'phazex-3d-builder-v1';
+
+  function autoSaveLocal() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  document.getElementById('saveBtn').addEventListener('click', () => {
+    autoSaveLocal();
+    toast('Loyiha brauzer xotirasiga saqlandi', 'fa-floppy-disk', 'text-brand-500');
+  });
+
+  document.getElementById('loadBtn').addEventListener('click', () => {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) { toast("Saqlangan loyiha topilmadi", 'fa-triangle-exclamation', 'text-amber-500'); return; }
+    try {
+      state = JSON.parse(raw);
+      selectedId = null;
+      renderAll();
+      pushHistory();
+      toast('Loyiha yuklandi', 'fa-folder-open', 'text-brand-500');
+    } catch (e) { toast('Yuklashda xatolik', 'fa-triangle-exclamation', 'text-rose-500'); }
+  });
+
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'phazex-3d-loyiha.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('JSON fayl yuklab olindi', 'fa-file-export', 'text-brand-500');
+  });
+
+  document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importInput').click());
+  document.getElementById('importInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        if (!parsed.items) throw new Error('invalid');
+        state = { items: parsed.items || [], connections: parsed.connections || [] };
+        selectedId = null;
+        renderAll();
+        pushHistory();
+        toast('Loyiha import qilindi', 'fa-file-import', 'text-brand-500');
+      } catch (err) { toast("Noto'g'ri JSON fayl", 'fa-triangle-exclamation', 'text-rose-500'); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  // =========================================================
+  // 6) CHAP PANELNI RENDER QILISH (DRAGGABLE KARTALAR)
+  // =========================================================
+  function renderEquipmentList(filter = '') {
+    equipmentListEl.innerHTML = '';
+    const q = filter.trim().toLowerCase();
+    EQUIPMENT.filter((eq) => eq.name.toLowerCase().includes(q)).forEach((eq) => {
+      const card = document.createElement('div');
+      card.className = 'equipment-card flex items-center gap-3 p-2.5 rounded-xl border border-slate-200 bg-white';
+      card.draggable = true;
+      card.dataset.equipmentId = eq.id;
+      card.innerHTML = `
+        <div class="w-12 h-12 rounded-lg flex items-center justify-center shrink-0" style="background:${eq.color}15">
+          <img class="equipment-thumb" src="${eq.image}" alt="${eq.name}" onerror="handleImageError(this,'${eq.id}')" />
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="text-[13px] font-semibold text-slate-700 truncate">${eq.name}</p>
+          <p class="text-[10.5px] text-slate-400 truncate">${eq.spec}</p>
+        </div>
+        <i class="fa-solid fa-grip-vertical text-slate-300 text-xs"></i>`;
+      card.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', eq.id);
+        e.dataTransfer.effectAllowed = 'copy';
+        card.classList.add('dragging-source');
+      });
+      card.addEventListener('dragend', () => card.classList.remove('dragging-source'));
+      equipmentListEl.appendChild(card);
+    });
+  }
+  renderEquipmentList();
+  document.getElementById('equipmentSearch').addEventListener('input', (e) => renderEquipmentList(e.target.value));
+
+  function handleImageError(imgEl, equipmentId) {
+    const eq = EQUIPMENT_BY_ID[equipmentId];
+    if (eq) { imgEl.onerror = null; imgEl.src = svgToDataUrl(eq.svg); }
+  }
+
+  // =========================================================
+  // 7) ISHCHI MAYDONGA DRAG & DROP (yangi jihoz qo'shish)
+  // =========================================================
+  workspace.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; workspace.classList.add('drag-over'); });
+  workspace.addEventListener('dragleave', (e) => { if (e.target === workspace) workspace.classList.remove('drag-over'); });
+  workspace.addEventListener('drop', (e) => {
+    e.preventDefault();
+    workspace.classList.remove('drag-over');
+    const equipmentId = e.dataTransfer.getData('text/plain');
+    const eq = EQUIPMENT_BY_ID[equipmentId];
+    if (!eq) return;
+    const rect = workspace.getBoundingClientRect();
+    let x = (e.clientX - rect.left) / zoom - 32;
+    let y = (e.clientY - rect.top) / zoom - 32;
+    if (snapEnabled) { x = Math.round(x / GRID_SIZE) * GRID_SIZE; y = Math.round(y / GRID_SIZE) * GRID_SIZE; }
+    addItem(eq, x, y);
+  });
+
+  // Bo'sh joyga bosilsa: tanlovni va kutilayotgan ulanishni bekor qilish
+  workspace.addEventListener('pointerdown', (e) => {
+    if (e.target === workspace || e.target === wiresLayer) {
+      selectItem(null);
+      cancelPendingConnection();
+    }
+  });
+
+  // =========================================================
+  // 8) ITEM CRUD
+  // =========================================================
+  function addItem(eq, x, y) {
+    const item = {
+      id: uid(), equipmentId: eq.id, x, y, rotation: 0,
+      value: defaultValueFor(eq.type),
+      on: isControlType(eq.type) ? false : undefined,
+      blown: eq.type === 'fuse' ? false : undefined,
+      baseValue: eq.type === 'battery' ? 9 : undefined,
+    };
+    state.items.push(item);
+    renderAll();
+    pushHistory();
+    playSound('click');
+    toast(`${eq.name} qo'shildi`, 'fa-circle-plus', 'text-emerald-500');
+    maybeUnlockAchievement('firstItem');
+    if (state.items.length >= 10) maybeUnlockAchievement('builder10');
+    return item;
+  }
+
+  function removeItem(id) {
+    state.items = state.items.filter((i) => i.id !== id);
+    state.connections = state.connections.filter((c) => c.a !== id && c.b !== id);
+    if (selectedId === id) selectItem(null);
+    selectedIds.delete(id);
+    renderAll();
+    pushHistory();
+    playSound('delete');
+  }
+
+  function duplicateItem(id) {
+    const src = state.items.find((i) => i.id === id);
+    if (!src) return;
+    const copy = { ...src, id: uid(), x: src.x + 24, y: src.y + 24 };
+    state.items.push(copy);
+    renderAll();
+    pushHistory();
+    playSound('duplicate');
+    toast('Nusxa yaratildi', 'fa-copy', 'text-brand-500');
+    selectItem(copy.id);
+  }
+
+  function rotateItem(id, delta) {
+    const it = state.items.find((i) => i.id === id);
+    if (!it) return;
+    it.rotation = ((it.rotation || 0) + delta + 360) % 360;
+    renderAll();
+    pushHistory();
+  }
+
+  function bringToFront(id) {
+    const idx = state.items.findIndex((i) => i.id === id);
+    if (idx === -1) return;
+    const [it] = state.items.splice(idx, 1);
+    state.items.push(it);
+    renderAll();
+    pushHistory();
+  }
+
+  function setItemValue(id, value) {
+    const it = state.items.find((i) => i.id === id);
+    if (!it) return;
+    it.value = value;
+    renderAll();
+    pushHistory();
+  }
+
+  function toggleSwitch(id) {
+    const it = state.items.find((i) => i.id === id);
+    if (!it || !isControlType(EQUIPMENT_BY_ID[it.equipmentId].type)) return;
+    it.on = !it.on;
+    renderAll();
+    pushHistory();
+    playSound(it.on ? 'switchOn' : 'switchOff');
+    toast(`${EQUIPMENT_BY_ID[it.equipmentId].name} ${it.on ? 'YONDI' : "O'CHDI"}`, it.on ? 'fa-bolt' : 'fa-power-off', it.on ? 'text-emerald-500' : 'text-slate-400');
+  }
+
+  // Tugma (button): faqat bosib turilganda ON, qo'yib yuborilganda OFF (momentar)
+  function setMomentary(id, pressed) {
+    const it = state.items.find((i) => i.id === id);
+    if (!it || EQUIPMENT_BY_ID[it.equipmentId].type !== 'button') return;
+    it.on = pressed;
+    renderAll();
+    if (pressed) playSound('click');
+  }
+
+  function replaceFuse(id) {
+    const it = state.items.find((i) => i.id === id);
+    if (!it || EQUIPMENT_BY_ID[it.equipmentId].type !== 'fuse') return;
+    it.blown = false;
+    renderAll();
+    pushHistory();
+    toast("Saqlagich almashtirildi", 'fa-shield-halved', 'text-emerald-500');
+  }
+
+  // =========================================================
+  // 9) ULANISHLAR (WIRES)
+  // =========================================================
+  function toggleConnectMode() {
+    connectMode = !connectMode;
+    cancelPendingConnection();
+    document.getElementById('connectBtn').classList.toggle('active', connectMode);
+    workspace.classList.toggle('connect-mode', connectMode);
+    toast(connectMode ? 'Ulash rejimi yoqildi — ikkita jihozni bosing' : 'Ulash rejimi o\'chirildi', 'fa-plug-circle-bolt', 'text-brand-500');
+  }
+
+  function cancelPendingConnection() {
+    pendingConnectId = null;
+    document.querySelectorAll('.placed-item.connect-pending').forEach((el) => el.classList.remove('connect-pending'));
+  }
+
+  function handleConnectClick(itemId) {
+    if (!pendingConnectId) {
+      pendingConnectId = itemId;
+      document.querySelector(`[data-id="${itemId}"]`)?.classList.add('connect-pending');
+      return;
+    }
+    if (pendingConnectId === itemId) { cancelPendingConnection(); return; }
+    const exists = state.connections.some(
+      (c) => (c.a === pendingConnectId && c.b === itemId) || (c.a === itemId && c.b === pendingConnectId)
+    );
+    if (!exists) {
+      state.connections.push({ id: uid(), a: pendingConnectId, b: itemId });
+      pushHistory();
+      playSound('connect');
+      toast('Sim ulandi', 'fa-link', 'text-emerald-500');
+      maybeUnlockAchievement('firstConnection');
+    }
+    cancelPendingConnection();
+    renderAll();
+  }
+
+  function removeConnection(connId) {
+    state.connections = state.connections.filter((c) => c.id !== connId);
+    renderAll();
+    pushHistory();
+    playSound('disconnect');
+  }
+
+  function itemCenter(item) {
+    return { x: item.x + 32, y: item.y + 32 };
+  }
+
+  function renderWires() {
+    wiresLayer.setAttribute('width', workspace.style.width);
+    wiresLayer.setAttribute('height', workspace.style.height);
+    wiresLayer.innerHTML = '';
+    const poweredSet = computePoweredSet();
+
+    state.connections.forEach((conn) => {
+      const a = state.items.find((i) => i.id === conn.a);
+      const b = state.items.find((i) => i.id === conn.b);
+      if (!a || !b) return;
+      const pa = itemCenter(a);
+      const pb = itemCenter(b);
+      const isPowered = powerOn && poweredSet.has(a.id) && poweredSet.has(b.id);
+
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', pa.x); line.setAttribute('y1', pa.y);
+      line.setAttribute('x2', pb.x); line.setAttribute('y2', pb.y);
+      line.setAttribute('stroke', isPowered ? '#f59e0b' : '#94a3b8');
+      line.setAttribute('stroke-width', isPowered ? '4' : '3');
+      line.setAttribute('stroke-linecap', 'round');
+      line.style.pointerEvents = 'stroke';
+      line.style.cursor = 'pointer';
+      line.addEventListener('click', (e) => { e.stopPropagation(); removeConnection(conn.id); });
+      const titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      titleEl.textContent = "O'chirish uchun bosing";
+      line.appendChild(titleEl);
+      wiresLayer.appendChild(line);
+    });
+  }
+
+  // =========================================================
+  // 10) QUVVAT SIMULYATSIYASI (oddiy BFS)
+  // =========================================================
+  function buildAdjacency() {
+    const adjacency = {};
+    state.items.forEach((i) => (adjacency[i.id] = []));
+    state.connections.forEach((c) => {
+      if (adjacency[c.a] && adjacency[c.b]) { adjacency[c.a].push(c.b); adjacency[c.b].push(c.a); }
+    });
+    return adjacency;
+  }
+
+  function computePoweredSet() {
+    const powered = new Set();
+    if (!powerOn) return powered;
+
+    const adjacency = buildAdjacency();
+    const batteries = state.items.filter((i) => EQUIPMENT_BY_ID[i.equipmentId].type === 'battery' && (i.value || 0) > 0);
+    const queue = [...batteries.map((b) => b.id)];
+    const visited = new Set(queue);
+
+    while (queue.length) {
+      const curId = queue.shift();
+      powered.add(curId);
+      const curItem = state.items.find((i) => i.id === curId);
+      const curType = curItem ? EQUIPMENT_BY_ID[curItem.equipmentId].type : null;
+      // O'chiq kalit/tugma/rele yoki kuygan saqlagichdan nariga tok o'tmaydi
+      if (isControlType(curType) && curItem.on !== true) continue;
+      if (curType === 'fuse' && curItem.blown === true) continue;
+      (adjacency[curId] || []).forEach((n) => {
+        if (!visited.has(n)) { visited.add(n); queue.push(n); }
+      });
+    }
+    return powered;
+  }
+
+  // Ikkita batareya to'g'ridan-to'g'ri (orada hech qanday yuk/qarshiliksiz) ulansa — qisqa tutashuv
+  function detectShortCircuitIds() {
+    const shorted = new Set();
+    if (!powerOn) return shorted;
+    const batteryIds = new Set(state.items.filter((i) => EQUIPMENT_BY_ID[i.equipmentId].type === 'battery').map((i) => i.id));
+    state.connections.forEach((c) => {
+      if (batteryIds.has(c.a) && batteryIds.has(c.b)) { shorted.add(c.a); shorted.add(c.b); }
+    });
+    return shorted;
+  }
+
+  // Oddiy Om qonuni asosida zanjir statistikasi (V, R, I, P) — ketma-ket ulanish taxmin qilinadi
+  function computeCircuitStats(poweredSet) {
+    const items = state.items.filter((i) => poweredSet.has(i.id));
+    const batteries = items.filter((i) => EQUIPMENT_BY_ID[i.equipmentId].type === 'battery');
+    const resistive = items.filter((i) => ['resistor', 'potentiometer'].includes(EQUIPMENT_BY_ID[i.equipmentId].type));
+    const loads = items.filter((i) => ['led', 'buzzer', 'motor', 'sevenseg'].includes(EQUIPMENT_BY_ID[i.equipmentId].type));
+
+    const totalVoltage = batteries.reduce((sum, b) => sum + (b.value || 0), 0);
+    let totalResistance = resistive.reduce((sum, r) => {
+      const eq = EQUIPMENT_BY_ID[r.equipmentId];
+      const val = eq.type === 'potentiometer' ? (r.value / 100) * 1000 : r.value;
+      return sum + (val || 0);
+    }, 0);
+    if (loads.length > 0) totalResistance += loads.length * 15; // yuklarning ichki qarshiligi (taxminiy)
+
+    const current = totalResistance > 0 ? totalVoltage / totalResistance : 0;
+    const power = totalVoltage * current;
+    return { voltage: totalVoltage, resistance: totalResistance, current, power, hasLoad: loads.length > 0 };
+  }
+
+  function togglePower() {
+    powerOn = !powerOn;
+    document.getElementById('powerBtn').classList.toggle('active', powerOn);
+    document.getElementById('statsPanel').classList.toggle('hidden-panel', !powerOn);
+    renderAll();
+    playSound(powerOn ? 'powerOn' : 'powerOff');
+    toast(powerOn ? 'Zanjirga quvvat berildi' : "Quvvat o'chirildi", powerOn ? 'fa-bolt' : 'fa-power-off', powerOn ? 'text-amber-500' : 'text-slate-400');
+    if (powerOn) maybeUnlockAchievement('firstPower', "Birinchi marta quvvat berdingiz!", 'fa-bolt');
+  }
+
+  // =========================================================
+  // 11) TO'LIQ RENDER (DOM'ni state asosida qayta quradi)
+  // =========================================================
+  function renderAll() {
+    const existing = workspace.querySelectorAll('.placed-item');
+    existing.forEach((el) => el.remove());
+
+    const poweredSet = computePoweredSet();
+
+    state.items.forEach((item) => {
+      const eq = EQUIPMENT_BY_ID[item.equipmentId];
+      if (!eq) return;
+      const el = buildItemElement(item, eq, poweredSet.has(item.id));
+      workspace.appendChild(el);
+    });
+
+    renderWires();
+    itemCountEl.textContent = state.items.length;
+    emptyHint.style.display = state.items.length > 0 ? 'none' : 'flex';
+    renderProperties();
+  }
+
+  function imageFilterFor(item, eq) {
+    if (eq.type === 'led') {
+      const c = LED_COLORS[item.value] || LED_COLORS.red;
+      return `hue-rotate(${c.hue}deg) saturate(1.4)`;
+    }
+    return '';
+  }
+
+  function glowColorFor(eq, item) {
+    if (eq.type === 'led') return (LED_COLORS[item.value] || LED_COLORS.red).hex;
+    if (eq.type === 'buzzer') return '#38bdf8';
+    if (eq.type === 'motor') return '#fb923c';
+    return '#facc15';
+  }
+
+  function buildItemElement(item, eq, isPowered) {
+    const el = document.createElement('div');
+    el.className = 'placed-item pop-in flex flex-col items-center type-' + eq.type;
+    el.dataset.id = item.id;
+    el.style.left = `${item.x}px`;
+    el.style.top = `${item.y}px`;
+    el.style.zIndex = 10;
+    if (item.id === selectedId) el.classList.add('selected');
+    if (powerOn && isPowered && (eq.type === 'led' || eq.type === 'buzzer' || eq.type === 'motor')) {
+      el.classList.add('powered');
+      el.style.setProperty('--glow', glowColorFor(eq, item));
+    }
+
+    const rotation = item.rotation || 0;
+    const filter = imageFilterFor(item, eq);
+    const valueLabel = eq.type === 'battery' ? `${item.value}V`
+      : eq.type === 'resistor' ? `${item.value}Ω`
+      : eq.type === 'led' ? (LED_COLORS[item.value] || LED_COLORS.red).label
+      : eq.type === 'switch' ? (item.on ? 'ON' : 'OFF')
+      : eq.spec;
+
+    el.innerHTML = `
+      <div class="item-card relative bg-white rounded-2xl shadow-card border border-slate-200 p-2.5 flex items-center justify-center">
+        <img class="item-visual" style="transform:rotate(${rotation}deg); filter:${filter};" src="${eq.image}" alt="${eq.name}" onerror="handleImageError(this,'${eq.id}')" />
+        <button type="button" class="remove-btn absolute -top-2 -right-2 w-6 h-6 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-md hover:bg-rose-600" title="O'chirish">
+          <i class="fa-solid fa-xmark text-[11px]"></i>
+        </button>
+        ${eq.type === 'switch' ? `<button type="button" class="switch-pill absolute -bottom-2 left-1/2 -translate-x-1/2 text-[9px] font-bold px-2 py-0.5 rounded-full ${item.on ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}">${item.on ? 'ON' : 'OFF'}</button>` : ''}
+      </div>
+      <span class="mt-1.5 text-[10px] font-medium text-slate-500 bg-white/90 px-2 py-0.5 rounded-full shadow-soft whitespace-nowrap">${eq.name} &middot; ${valueLabel}</span>
+    `;
+
+    // --- O'chirish: ikki marta bosish ---
+    el.addEventListener('dblclick', (e) => { e.stopPropagation(); removeItem(item.id); });
+
+    // --- O'chirish: "x" tugmasi ---
+    el.querySelector('.remove-btn').addEventListener('click', (e) => { e.stopPropagation(); removeItem(item.id); });
+
+    // --- Kalitni ON/OFF qilish ---
+    const switchPill = el.querySelector('.switch-pill');
+    if (switchPill) switchPill.addEventListener('click', (e) => { e.stopPropagation(); toggleSwitch(item.id); });
+
+    // --- O'ng tugma: kontekst menyu ---
+    el.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e.clientX, e.clientY, item.id); });
+
+    // --- Erkin surish + bosish (select / connect) ---
+    enableFreeDrag(el, item, eq);
+
+    return el;
+  }
+
+  // =========================================================
+  // 12) ERKIN SURISH (pointer-based drag, klik aniqlash bilan)
+  // =========================================================
+  function enableFreeDrag(el, item, eq) {
+    let isDown = false, moved = false;
+    let startClientX = 0, startClientY = 0;
+    let offsetX = 0, offsetY = 0;
+
+    el.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.remove-btn') || e.target.closest('.switch-pill')) return;
+      isDown = true; moved = false;
+      startClientX = e.clientX; startClientY = e.clientY;
+      el.setPointerCapture(e.pointerId);
+      el.classList.add('is-dragging');
+      bringToFrontVisual(el);
+
+      const wsRect = workspace.getBoundingClientRect();
+      offsetX = (e.clientX - wsRect.left) / zoom - item.x;
+      offsetY = (e.clientY - wsRect.top) / zoom - item.y;
+    });
+
+    el.addEventListener('pointermove', (e) => {
+      if (!isDown) return;
+      const dx = e.clientX - startClientX, dy = e.clientY - startClientY;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) moved = true;
+      if (!moved) return;
+
+      const wsRect = workspace.getBoundingClientRect();
+      let newX = (e.clientX - wsRect.left) / zoom - offsetX;
+      let newY = (e.clientY - wsRect.top) / zoom - offsetY;
+      if (snapEnabled) { newX = Math.round(newX / GRID_SIZE) * GRID_SIZE; newY = Math.round(newY / GRID_SIZE) * GRID_SIZE; }
+      newX = Math.max(0, newX); newY = Math.max(0, newY);
+
+      item.x = newX; item.y = newY;
+      el.style.left = `${newX}px`;
+      el.style.top = `${newY}px`;
+      renderWires();
+    });
+
+    function endDrag(e) {
+      if (!isDown) return;
+      isDown = false;
+      el.classList.remove('is-dragging');
+      try { el.releasePointerCapture(e.pointerId); } catch (err) {}
+
+      if (!moved) {
+        // Bu "klik" edi — surilmadi
+        if (connectMode) { handleConnectClick(item.id); return; }
+        if (eq.type === 'switch') { toggleSwitch(item.id); return; }
+        selectItem(item.id);
+      } else {
+        pushHistory();
+      }
+    }
+    el.addEventListener('pointerup', endDrag);
+    el.addEventListener('pointercancel', endDrag);
+  }
+
+  function bringToFrontVisual(el) {
+    let maxZ = 10;
+    workspace.querySelectorAll('.placed-item').forEach((n) => { maxZ = Math.max(maxZ, parseInt(n.style.zIndex || 10, 10)); });
+    el.style.zIndex = maxZ + 1;
+  }
+
+  // =========================================================
+  // 13) TANLASH + XUSUSIYATLAR PANELI
+  // =========================================================
+  function selectItem(id) {
+    selectedId = id;
+    document.querySelectorAll('.placed-item').forEach((el) => el.classList.toggle('selected', el.dataset.id === id));
+    renderProperties();
+  }
+
+  function renderProperties() {
+    if (!selectedId) { propertiesPanel.classList.add('hidden-panel'); return; }
+    const item = state.items.find((i) => i.id === selectedId);
+    if (!item) { propertiesPanel.classList.add('hidden-panel'); return; }
+    const eq = EQUIPMENT_BY_ID[item.equipmentId];
+    propertiesPanel.classList.remove('hidden-panel');
+
+    let valueField = '';
+    if (eq.type === 'battery') {
+      valueField = `
+        <label class="block text-xs font-medium text-slate-500 mb-1">Kuchlanish (V)</label>
+        <input id="valueInput" type="number" min="1" max="24" step="0.5" value="${item.value}"
+          class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-200" />`;
+    } else if (eq.type === 'resistor') {
+      valueField = `
+        <label class="block text-xs font-medium text-slate-500 mb-1">Qarshilik (Ω)</label>
+        <input id="valueInput" type="number" min="1" max="100000" step="10" value="${item.value}"
+          class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-200" />`;
+    } else if (eq.type === 'led') {
+      const options = Object.entries(LED_COLORS).map(([key, c]) => `<option value="${key}" ${item.value === key ? 'selected' : ''}>${c.label}</option>`).join('');
+      valueField = `
+        <label class="block text-xs font-medium text-slate-500 mb-1">LED rangi</label>
+        <select id="valueInput" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-200">${options}</select>`;
+    } else if (eq.type === 'switch') {
+      valueField = `
+        <label class="block text-xs font-medium text-slate-500 mb-1">Holati</label>
+        <button id="switchToggleBtn" class="w-full px-3 py-2 rounded-lg text-sm font-semibold ${item.on ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500'}">
+          ${item.on ? 'YONIQ (ON)' : "O'CHIQ (OFF)"}
+        </button>`;
+    }
+
+    propertiesContent.innerHTML = `
+      <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+        <div class="w-14 h-14 rounded-xl flex items-center justify-center shrink-0" style="background:${eq.color}15">
+          <img class="w-9 h-9 object-contain" src="${eq.image}" onerror="handleImageError(this,'${eq.id}')" />
+        </div>
+        <div class="min-w-0">
+          <p class="text-sm font-bold text-slate-800 truncate">${eq.name}</p>
+          <p class="text-[11px] text-slate-400 truncate">ID: ${item.id}</p>
+        </div>
+      </div>
+
+      ${valueField ? `<div>${valueField}</div>` : '<p class="text-xs text-slate-400">Bu jihoz uchun qo\'shimcha sozlama yo\'q.</p>'}
+
+      <div>
+        <label class="block text-xs font-medium text-slate-500 mb-1">Burchak: <span id="rotationLabel">${item.rotation || 0}&deg;</span></label>
+        <div class="flex items-center gap-2">
+          <button id="rotateLeftBtn" class="toolbar-btn !px-2.5"><i class="fa-solid fa-rotate-left"></i></button>
+          <input id="rotationSlider" type="range" min="0" max="350" step="10" value="${item.rotation || 0}" class="flex-1 accent-brand-500" />
+          <button id="rotateRightBtn" class="toolbar-btn !px-2.5"><i class="fa-solid fa-rotate-right"></i></button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+        <button id="duplicateBtn" class="toolbar-btn justify-center"><i class="fa-solid fa-copy"></i> Nusxalash</button>
+        <button id="bringFrontBtn" class="toolbar-btn justify-center"><i class="fa-solid fa-layer-group"></i> Old plan</button>
+        <button id="deleteItemBtn" class="toolbar-btn justify-center col-span-2 !text-rose-500 hover:!bg-rose-50 hover:!border-rose-200"><i class="fa-solid fa-trash-can"></i> O'chirish</button>
+      </div>
+    `;
+
+    const valueInput = document.getElementById('valueInput');
+    if (valueInput) {
+      valueInput.addEventListener('change', () => {
+        const raw = valueInput.value;
+        const parsed = (eq.type === 'battery' || eq.type === 'resistor') ? parseFloat(raw) || 0 : raw;
+        setItemValue(item.id, parsed);
+      });
+    }
+    const switchToggleBtn = document.getElementById('switchToggleBtn');
+    if (switchToggleBtn) switchToggleBtn.addEventListener('click', () => toggleSwitch(item.id));
+
+    document.getElementById('rotationSlider').addEventListener('input', (e) => {
+      const it = state.items.find((i) => i.id === item.id);
+      it.rotation = parseInt(e.target.value, 10);
+      document.getElementById('rotationLabel').textContent = it.rotation + '°';
+      const img = document.querySelector(`[data-id="${item.id}"] .item-visual`);
+      if (img) img.style.transform = `rotate(${it.rotation}deg)`;
+    });
+    document.getElementById('rotationSlider').addEventListener('change', () => pushHistory());
+    document.getElementById('rotateLeftBtn').addEventListener('click', () => rotateItem(item.id, -15));
+    document.getElementById('rotateRightBtn').addEventListener('click', () => rotateItem(item.id, 15));
+    document.getElementById('duplicateBtn').addEventListener('click', () => duplicateItem(item.id));
+    document.getElementById('bringFrontBtn').addEventListener('click', () => bringToFront(item.id));
+    document.getElementById('deleteItemBtn').addEventListener('click', () => removeItem(item.id));
+  }
+
+  document.getElementById('closePropertiesBtn').addEventListener('click', () => selectItem(null));
+
+  // =========================================================
+  // 14) KONTEKST MENYU (o'ng tugma bosish)
+  // =========================================================
+  const ctxMenu = document.getElementById('ctxMenu');
+  function showContextMenu(x, y, itemId) {
+    const item = state.items.find((i) => i.id === itemId);
+    const eq = EQUIPMENT_BY_ID[item.equipmentId];
+    ctxMenu.innerHTML = `
+      <button data-act="select"><i class="fa-solid fa-sliders text-brand-500 w-4"></i> Xususiyatlar</button>
+      <button data-act="duplicate"><i class="fa-solid fa-copy text-slate-400 w-4"></i> Nusxalash</button>
+      <button data-act="rotate"><i class="fa-solid fa-rotate-right text-slate-400 w-4"></i> 15&deg; aylantirish</button>
+      <button data-act="front"><i class="fa-solid fa-layer-group text-slate-400 w-4"></i> Old planga chiqarish</button>
+      ${eq.type === 'switch' ? `<button data-act="toggle"><i class="fa-solid fa-power-off text-slate-400 w-4"></i> Holatni almashtirish</button>` : ''}
+      <div class="h-px bg-slate-100 my-1"></div>
+      <button data-act="delete" class="!text-rose-500"><i class="fa-solid fa-trash-can w-4"></i> O'chirish</button>
+    `;
+    ctxMenu.style.left = x + 'px';
+    ctxMenu.style.top = y + 'px';
+    ctxMenu.classList.remove('hidden');
+
+    ctxMenu.querySelectorAll('button').forEach((btn) => {
+      btn.onclick = () => {
+        const act = btn.dataset.act;
+        if (act === 'select') selectItem(itemId);
+        if (act === 'duplicate') duplicateItem(itemId);
+        if (act === 'rotate') rotateItem(itemId, 15);
+        if (act === 'front') bringToFront(itemId);
+        if (act === 'toggle') toggleSwitch(itemId);
+        if (act === 'delete') removeItem(itemId);
+        hideContextMenu();
+      };
+    });
+  }
+  function hideContextMenu() { ctxMenu.classList.add('hidden'); }
+  document.addEventListener('click', (e) => { if (!ctxMenu.contains(e.target)) hideContextMenu(); });
+  document.addEventListener('scroll', hideContextMenu, true);
+
+  // =========================================================
+  // 15) ZOOM
+  // =========================================================
+  function applyZoom() {
+    workspace.style.transform = `scale(${zoom})`;
+    document.getElementById('zoomLabel').textContent = Math.round(zoom * 100) + '%';
+  }
+  document.getElementById('zoomInBtn').addEventListener('click', () => { zoom = Math.min(2, Math.round((zoom + 0.1) * 10) / 10); applyZoom(); });
+  document.getElementById('zoomOutBtn').addEventListener('click', () => { zoom = Math.max(0.4, Math.round((zoom - 0.1) * 10) / 10); applyZoom(); });
+  document.getElementById('zoomResetBtn').addEventListener('click', () => { zoom = 1; applyZoom(); });
+
+  // =========================================================
+  // 16) ASBOBLAR PANELI TUGMALARI
+  // =========================================================
+  document.getElementById('undoBtn').addEventListener('click', undo);
+  document.getElementById('redoBtn').addEventListener('click', redo);
+  document.getElementById('connectBtn').addEventListener('click', toggleConnectMode);
+  document.getElementById('powerBtn').addEventListener('click', togglePower);
+  document.getElementById('snapToggle').addEventListener('change', (e) => { snapEnabled = e.target.checked; });
+
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    if (state.items.length === 0) return;
+    if (!confirm(`Sahnadagi barcha ${state.items.length} ta jihozni o'chirmoqchimisiz?`)) return;
+    state.items = []; state.connections = []; selectedId = null;
+    renderAll();
+    pushHistory();
+    toast('Sahna tozalandi', 'fa-broom', 'text-rose-500');
+  });
+
+  // Yordam modali
+  const helpModal = document.getElementById('helpModal');
+  document.getElementById('helpBtn').addEventListener('click', () => { helpModal.classList.remove('hidden'); helpModal.classList.add('flex'); });
+  document.getElementById('closeHelpBtn').addEventListener('click', () => { helpModal.classList.add('hidden'); helpModal.classList.remove('flex'); });
+  helpModal.addEventListener('click', (e) => { if (e.target === helpModal) { helpModal.classList.add('hidden'); helpModal.classList.remove('flex'); } });
+
+  // =========================================================
+  // 17) KLAVIATURA QISQA YO'LLARI
+  // =========================================================
+  document.addEventListener('keydown', (e) => {
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+    if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y')) { e.preventDefault(); redo(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); if (selectedId) duplicateItem(selectedId); return; }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) { e.preventDefault(); removeItem(selectedId); return; }
+    if (e.key === 'Escape') { selectItem(null); cancelPendingConnection(); hideContextMenu(); }
+  });
+
+  // =========================================================
+  // 18) BOSHLANG'ICH YUKLASH
+  // =========================================================
+  (function init() {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.items)) state = parsed;
+      } catch (e) {}
+    }
+    renderAll();
+    historyStack = [snapshot()];
+    historyIndex = 0;
+    updateUndoRedoButtons();
+    applyZoom();
+    statusText.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i> Tayyor';
+  })();
+</script>
+</body>
+</html>
